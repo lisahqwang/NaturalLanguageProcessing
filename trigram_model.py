@@ -4,13 +4,12 @@ import math
 import random
 import os
 import os.path
-"""
-COMS W4705 - Natural Language Processing - Fall 2024 
-Programming Homework 1 - Trigram Language Models
-Daniel Bauer
-"""
+
 
 def corpus_reader(corpusfile, lexicon=None): 
+    """
+    function that converts to lower, separates into singly words, yields UNK for unknowns
+    """
     with open(corpusfile,'r') as corpus: 
         for line in corpus: 
             if line.strip():
@@ -21,12 +20,14 @@ def corpus_reader(corpusfile, lexicon=None):
                     yield sequence
 
 def get_lexicon(corpus):
+    """
+    function that initializes a default dict of int list, every word encountered in corpus
+    """
     word_counts = defaultdict(int)
     for sentence in corpus:
         for word in sentence: 
             word_counts[word] += 1
     return set(word for word in word_counts if word_counts[word] > 1)  
-
 
 
 def get_ngrams(sequence, n):
@@ -35,9 +36,16 @@ def get_ngrams(sequence, n):
     Given a sequence, this function should return a list of n-grams, where each n-gram is a Python tuple.
     This should work for arbitrary values of n >= 1 
     """
-
-    return []
-
+    if(n > 2): 
+        padding_left = ['START']*(n-1)
+    else: 
+        ['START']
+    padding_right = ['STOP']
+    sequence = padding_left + sequence + padding_right
+    ngrams = [] 
+    for i in range(len(sequence) - n + 1): 
+        ngrams.append(tuple(sequence[i:i+n]))
+    return ngrams
 
 class TrigramModel(object):
     
@@ -62,38 +70,69 @@ class TrigramModel(object):
         and trigram counts. 
         """
    
-        self.unigramcounts = {} # might want to use defaultdict or Counter instead
-        self.bigramcounts = {} 
-        self.trigramcounts = {} 
+        self.unigramcounts = defaultdict(int) # might want to use defaultdict or Counter instead
+        self.bigramcounts = defaultdict(int)
+        self.trigramcounts = defaultdict(int)
 
         ##Your code here
+        for sentence in corpus: 
+            unigrams = get_ngrams(sentence, 1)
+            bigrams = get_ngrams(sentence, 2)
+            trigrams = get_ngrams(sentence, 3)
 
+            for unigram in unigrams: 
+                self.unigramcounts[unigram] += 1
+            
+            for bigram in bigrams: 
+                self.bigramcounts[bigram] += 1
+
+            for trigram in trigrams: 
+                self.trigrams[trigram] += 1
+                if trigram[:2] == ('START', 'START'):
+                    self.bigramcounts[('START', 'START')] += 1 
         return
+
 
     def raw_trigram_probability(self,trigram):
         """
         COMPLETE THIS METHOD (PART 3)
         Returns the raw (unsmoothed) trigram probability
         """
-        return 0.0
+        if self.bigramcounts[trigram[:2]] != 0:
+            return (float)(self.trigramcounts[trigram]/self.bigramcounts[trigram[:2]])
+        else: 
+            return 0.0
 
     def raw_bigram_probability(self, bigram):
         """
         COMPLETE THIS METHOD (PART 3)
         Returns the raw (unsmoothed) bigram probability
         """
-        return 0.0
+        if self.unigramcounts[bigram[:1]] != 0: 
+            return float(self.bigramcounts[bigram]/self.unigramcounts[bigram[:1]])
+        else:
+            return 0.0
     
     def raw_unigram_probability(self, unigram):
         """
         COMPLETE THIS METHOD (PART 3)
         Returns the raw (unsmoothed) unigram probability.
         """
+        unigram_count = self.unigramcounts[unigram]
+        total = 0 
+
+        if self.numberOfWords >= 1:
+            total = self.numberOfWords
+        else: 
+            for token in self.unigramcounts:
+                if token != ('START'):
+                    total += self.unigramcounts[token]
+            self.numberOfWords = total
+        return float(unigram_count/total)
 
         #hint: recomputing the denominator every time the method is called
         # can be slow! You might want to compute the total number of words once, 
         # store in the TrigramModel instance, and then re-use it.  
-        return 0.0
 
     def generate_sentence(self,t=20): 
         """
@@ -101,7 +140,7 @@ class TrigramModel(object):
         Generate a random sentence from the trigram model. t specifies the
         max length, but the sentence may be shorter if STOP is reached.
         """
-        return result            
+        return          
 
     def smoothed_trigram_probability(self, trigram):
         """
@@ -111,21 +150,40 @@ class TrigramModel(object):
         lambda1 = 1/3.0
         lambda2 = 1/3.0
         lambda3 = 1/3.0
-        return 0.0
+
+        smoothed_prob = 0 
+        smoothed_prob = lambda1*self.raw_trigram_probability(trigram) + lambda2*self.raw_bigram_probability(trigram[1:]) + lambda3*self.raw_unigram_probability(trigram[2:])
+        return smoothed_prob
         
     def sentence_logprob(self, sentence):
         """
         COMPLETE THIS METHOD (PART 5)
         Returns the log probability of an entire sequence.
         """
-        return float("-inf")
+        log_prob = 0 
+        ngrams = get_ngrams(sentence, 3)
+        for trigram in ngrams:
+            log_prob += math.log2(self.smoothed_trigram_probability(trigram))
+        return float(log_prob)
 
     def perplexity(self, corpus):
         """
         COMPLETE THIS METHOD (PART 6) 
         Returns the log probability of an entire sequence.
         """
-        return float("inf") 
+        #compute the perplexity of the model on an entire corpus, return the log probability of an entire sequence
+        #previous summed log prob 
+        # 1 = 1/M * (sum(sentence_logprob(sentence)))
+
+        total_number_of_words = 0 
+        l = 0 
+
+        for sentence in corpus: 
+            total_number_of_words += len(sentence) + 1 
+            l += self.sentence_logprob(sentence)
+
+        l = (float)(l/total_number_of_words)
+        return math.pow(2, -l)
 
 
 def essay_scoring_experiment(training_file1, training_file2, testdir1, testdir2):
@@ -137,14 +195,20 @@ def essay_scoring_experiment(training_file1, training_file2, testdir1, testdir2)
         correct = 0       
  
         for f in os.listdir(testdir1):
-            pp = model1.perplexity(corpus_reader(os.path.join(testdir1, f), model1.lexicon))
-            # .. 
+            pp1 = model1.perplexity(corpus_reader(os.path.join(testdir1, f), model1.lexicon))
+            pp2 = model2.perplexity(corpus_reader(os.path.join(testdir1, f), model2.lexicon))
+            if(pp1 < pp2): 
+                correct += 1 
+            total += 1
     
         for f in os.listdir(testdir2):
-            pp = model2.perplexity(corpus_reader(os.path.join(testdir2, f), model2.lexicon))
-            # .. 
+            pp1 = model1.perplexity(corpus_reader(os.path.join(testdir1, f), model1.lexicon))
+            pp2 = model2.perplexity(corpus_reader(os.path.join(testdir2, f), model2.lexicon))
+            if(pp1 > pp2): 
+                correct += 1
+            total += 1
         
-        return 0.0
+        return correct/total
 
 if __name__ == "__main__":
 
