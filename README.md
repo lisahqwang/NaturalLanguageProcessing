@@ -1,8 +1,11 @@
 # NaturalLanguageProcessing
-Homework1
+'''
+trigram_model.py
+brown_test.txt
+brown_train.txt
+'''
 
 '''
-Homework2 
 conll_reader.py
 decoder.py
 evaluate.py
