@@ -1,28 +1,10 @@
-'''
-train a feed-forward neural network to predict the transitions of an arc-standard dependency parser. 
-The input to this network will be a representation of the current state (including words on the stack and buffer). 
-The output will be a transition (shift, left_arc, right_arc), together with a dependency relation label.
-Much of the parser code  is provided, but you will need to implement the input representation for the neural net,
- decode the output of the network, and also specify the network architecture and train the model.
-'''
-
-'''
-extracts two numpy matrices representing input output pairs. Change input representation to the neural network
-'''
-#! pip install keras
-#! pip install tensorflow
-
 from conll_reader import DependencyStructure, conll_reader
 from collections import defaultdict
 import copy
 import sys
 import keras
-import os
 import numpy as np
 
-'''
-don't understand why the self.buffer is a reversed list of input sentence 
-'''
 class State(object):
     def __init__(self, sentence = []):
         self.stack = []
@@ -35,7 +17,7 @@ class State(object):
         self.stack.append(self.buffer.pop())
 
     def left_arc(self, label):
-        self.deps.add((self.buffer[-1], self.stack.pop(),label))
+        self.deps.add( (self.buffer[-1], self.stack.pop(),label) )
 
     def right_arc(self, label):
         parent = self.stack.pop()
@@ -45,11 +27,7 @@ class State(object):
     def __repr__(self):
         return "{},{},{}".format(self.stack, self.buffer, self.deps)
 
-   
-'''
-apply_sequence takes the sequence from somewhere and then just applies it onto the sentence
-returns the dependency set of (w_i, r, w_j)
-'''
+
 def apply_sequence(seq, sentence):
     state = State(sentence)
     for rel, label in seq:
@@ -61,8 +39,7 @@ def apply_sequence(seq, sentence):
             state.right_arc(label) 
          
     return state.deps
-
-
+   
 class RootDummy(object):
     def __init__(self):
         self.head = None
@@ -71,10 +48,7 @@ class RootDummy(object):
     def __repr__(self):
         return "<ROOT>"
 
-'''
-Obtaining oracle transitions and a sequence of input/output examples
-given a dependency structure, returns a list of (state, transition) pairs
-'''
+     
 def get_training_instances(dep_structure):
 
     deprels = dep_structure.deprels
@@ -111,16 +85,12 @@ def get_training_instances(dep_structure):
             state.shift()
     return seq   
 
+
 dep_relations = ['tmod', 'vmod', 'csubjpass', 'rcmod', 'ccomp', 'poss', 'parataxis', 'appos', 'dep', 'iobj', 'pobj', 'mwe', 'quantmod', 'acomp', 'number', 'csubj', 'root', 'auxpass', 'prep', 'mark', 'expl', 'cc', 'npadvmod', 'prt', 'nsubj', 'advmod', 'conj', 'advcl', 'punct', 'aux', 'pcomp', 'discourse', 'nsubjpass', 'predet', 'cop', 'possessive', 'nn', 'xcomp', 'preconj', 'num', 'amod', 'dobj', 'neg','dt','det']
 
 
 class FeatureExtractor(object):
-    
-    '''
-    constructor takes two vocab files as inputs (file objects)
-    stores a word-to-index dictionary in the attribute 
-    word_vocab and POS-to-index dictionary in the attribute pos_vocab
-    '''
+       
     def __init__(self, word_vocab_file, pos_vocab_file):
         self.word_vocab = self.read_vocab(word_vocab_file)        
         self.pos_vocab = self.read_vocab(pos_vocab_file)        
@@ -143,66 +113,46 @@ class FeatureExtractor(object):
             vocab[word] = index
         return vocab     
 
-    '''
-    Returns an encoding of the input to the neural network, ie. a single vector
-    top-three words on the buffer and the next-three words on the stack
-    '''
     def get_input_representation(self, words, pos, state):
         # TODO: Write this method for Part 2
-        result = np.array([])
-        if len(state.buffer) > 0:
-            buffer1 = self.word_vocab[self.check_depr(words[state.buffer[-1]], pos[state.buffer[-1]])]
-        else:
-            buffer1 = self.word_vocab['<NULL>']
+        my_dict = defaultdict()
+        my_dict['CD'] = 0
+        my_dict['NNP'] = 1
+        my_dict['UNK'] = 2
+        my_dict[None] = 3
+        my_dict['NULL'] = 4
 
-        if len(state.buffer) > 1:
-            buffer2 = self.word_vocab[self.check_depr(words[state.buffer[-2]], pos[state.buffer[-2]])]
-        else:
-            buffer2 = self.word_vocab['<NULL>']
+        #representations of a state
+        rep_s1 = state.stack[-1] if len(state.stack) > 0 else 'NULL'
+        rep_s2 = state.stack[-2] if len(state.stack) > 1 else 'NULL'
+        rep_s3 = state.stack[-3] if len(state.stack) > 2 else 'NULL'
+        rep_b1 = state.buffer[-1] if len(state.buffer) > 0 else 'NULL'
+        rep_b2 = state.buffer[-2] if len(state.buffer) > 1 else 'NULL'
+        rep_b3 = state.buffer[-3] if len(state.buffer) > 2 else 'NULL'
+        list_rep = [rep_s1, rep_s2, rep_s3, rep_b1, rep_b2, rep_b3]
 
-        if len(state.buffer) > 2:
-            buffer3 = self.word_vocab[self.check_depr(words[state.buffer[-3]], pos[state.buffer[-3]])]
-        else:
-            buffer3 = self.word_vocab['<NULL>']
+        input_vector = np.zeros(6)
 
-        if len(state.stack) > 0:
-            stack1 = self.word_vocab[self.check_depr(words[state.stack[-1]], pos[state.stack[-1]])]
-        else:
-            stack1 = self.word_vocab['<NULL>']
-
-        if len(state.stack) > 1:
-            stack2 = self.word_vocab[self.check_depr(words[state.stack[-2]], pos[state.stack[-2]])]
-        else:
-            stack2 = self.word_vocab['<NULL>']
-
-        if len(state.stack) > 2:
-            stack3 = self.word_vocab[self.check_depr(words[state.stack[-3]], pos[state.stack[-3]])]
-        else:
-            stack3 = self.word_vocab['<NULL>']
-
-        return ([stack1, stack2, stack3, buffer1, buffer2, buffer3]) #length 6 
-    
-    def check_depr(self, word, pos):
-        if not pos:
-            return '<ROOT>'
-        elif pos == 'NNP':
-            return '<NNP>'
-        elif pos == 'CD':
-            return '<CD>'
-        else:
-            if word.lower() in self.word_vocab:
-                return word.lower()
+        #going through every word in the vector 
+        for i in range(6):
+            list_curr = list_rep[i]
+            top_pos = pos[list_curr] if list_curr != 'NULL' else 'NULL'
+            if top_pos in my_dict:
+                input_vector[i] = my_dict[top_pos]
             else:
-                return '<UNK>'
-            
-    '''
-    take a (transition, label) pair as its parameter and return a one-hot representation 
-    of these actions. Returns an output with one-hot vector of length 91. 
-    '''
+                word = words[list_curr].lower()
+                if word in self.word_vocab:
+                    input_vector[i] = self.word_vocab[word]
+                else:
+                    input_vector[i] = my_dict['UNK']
+
+        as_np_array = np.array(input_vector)
+        return as_np_array
+
     def get_output_representation(self, output_pair):  
         # TODO: Write this method for Part 2
         result = self.output_labels[output_pair]
-        return keras.utils.to_categorical(result, num_classes=91) #1x91 sparse vector
+        return keras.utils.to_categorical(result, num_classes=91)
 
      
     
@@ -223,6 +173,7 @@ def get_training_matrices(extractor, in_file):
     sys.stdout.write("\n")
     return np.vstack(inputs),np.vstack(outputs)
        
+
 
 if __name__ == "__main__":
 

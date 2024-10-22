@@ -1,8 +1,6 @@
 import sys 
 from collections import defaultdict
 
-'''
-data structures to represent a dependency tree, as well as functionality to read and write trees in the CoNLL-X format'''
 
 class DependencyEdge(object):
     """

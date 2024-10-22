@@ -2,17 +2,11 @@ import sys
 import copy
 
 import numpy as np
-import torch
+import torch 
 
 from conll_reader import DependencyStructure, DependencyEdge, conll_reader
 from extract_training_data import FeatureExtractor, State
 from train_model import DependencyModel
-
-'''
-uses the trained model file to parse some input. For simplicity, the input is a CoNLL-X formatted file, 
-but the dependency structure in the file is ignored. Prints the parser output for each sentence in CoNLL-
-X format. 
-'''
 
 class Parser(object):
 
@@ -27,46 +21,48 @@ class Parser(object):
         # The following dictionary from indices to output actions will be useful
         self.output_labels = dict([(index, action) for (action, index) in extractor.output_labels.items()])
 
-    '''
-    c is the word index of the target word
-    p is the word index of the head word
-    r is the dependency relation between 
-    '''
     def parse_sentence(self, words, pos):
-
         state = State(range(1,len(words)))
         state.stack.append(0)
 
         # TODO: Write the body of this loop for part 5
-        while state.buffer: 
-            feature = self.extractor.get_input_representation(words, pos, state)
-            pred = self.model.predict(np.array([feature,]))
-            indices = np.argsort(-pred, axis=1)[0]
-            for i in indices:
-                key, val = self.output_labels[i]
-                if key == 'shift':
-                    if len(state.buffer) == 1:
-                        if len(state.stack) == 0:
-                            state.shift()
-                            break
-                    elif len(state.buffer) > 1:
-                            state.shift()
-                            break
-                elif key == 'left_arc':
-                    if len(state.stack) > 0:
-                        if val != 'root':
-                            state.left_arc(val)
-                            break
-                elif key == 'right_arc':
-                    if len(state.stack) != 0:
-                        state.right_arc(val)
-                        break
+        while state.buffer:
+            features = self.extractor.get_input_representation(words, pos, state)
+            #convert to tensors 
+            features = torch.LongTensor(features).unsqueeze(0)
+            #may not need to do since CrossEntropy 
+            softmaxvec = self.model(features)
+
+            #top of sorted indices
+            sorted_indices = torch.argsort(softmaxvec, descending = True)[0]
+
+            for i in range(0, len(sorted_indices)):
+                action, label = self.output_labels[sorted_indices[i].item()]
+                if self.isLegal(state, action): 
+                    if action == "shift": 
+                        state.shift()
+                    elif action == "left_arc":
+                        state.left_arc(label)
+                    elif action == "right_arc":
+                        state.right_arc(label)
+                    break
 
         result = DependencyStructure()
         for p,c,r in state.deps:
             result.add_deprel(DependencyEdge(c,words[c],pos[c],p, r))
-
         return result
+    
+    #helper isLegal function 
+    def isLegal(self, state, action):
+        if action == "shift":
+            return len(state.buffer) >= 2 or len(state.stack) == 0 
+        if action == "left_arc" or action == "right_arc":
+            if len(state.stack) == 0: 
+                return False
+        if action == "left_arc" and state.stack[-1] == 0:
+            return False
+        else:
+            return True
 
 
 if __name__ == "__main__":

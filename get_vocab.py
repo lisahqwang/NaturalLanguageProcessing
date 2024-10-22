@@ -1,11 +1,6 @@
 import sys
 from conll_reader import conll_reader
 from collections import defaultdict
-'''
-extract a set of words and POS tags that appear in the training data. This is necessary 
-to format the input to the neural net (the dimensionality of the input vectors depends
-on the number of words
-'''
 
 def get_vocabularies(conll_reader):
     word_set = defaultdict(int)

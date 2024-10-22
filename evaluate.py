@@ -3,9 +3,6 @@ from extract_training_data import FeatureExtractor
 from conll_reader import conll_reader
 import sys
 
-'''
-this works like a decoder.py, but instead of ignoring the input dependencies it uses them to compare the parser output. 
-Prints evaluation results'''
 
 def compare_parser(target, predict):
     target_unlabeled = set((d.id,d.head) for d in target.deprels.values())
