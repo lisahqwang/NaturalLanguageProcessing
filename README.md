@@ -1,11 +1,13 @@
 # NaturalLanguageProcessing
 '''
+Homework 1: 
 trigram_model.py
 brown_test.txt
 brown_train.txt
 '''
 
 '''
+Homework 2: 
 conll_reader.py
 decoder.py
 evaluate.py
